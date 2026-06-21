@@ -307,13 +307,15 @@
         (uid && uidSet.has(uid)) ||
         (mappedUid && uidSet.has(mappedUid)) ||
         includesAny(author, nameRules) ||
+        includesAny(content, nameRules) ||
         includesAny(content, commentRules);
       setHidden(node, shouldHide);
     });
 
     scanCommentTextFallback(commentRules);
+    scanCommentTextFallback(nameRules);
 
-    document.querySelectorAll(USER_SELECTORS).forEach((node) => {
+    querySelectorAllDeep(USER_SELECTORS).forEach((node) => {
       if (node.closest(`#${PANEL_ID}`)) return;
       if (!getSpaceLink(node)) return;
       setHidden(node, isBlockedUserNode(node, uidSet, nameRules));
