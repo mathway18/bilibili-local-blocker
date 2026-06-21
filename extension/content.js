@@ -111,9 +111,9 @@
 
   async function boot() {
     injectStyle();
-    mountButton();
+    if (isTopFrame()) mountButton();
     rules = await loadRules();
-    openPanelWhenEmpty();
+    if (isTopFrame()) openPanelWhenEmpty();
     scheduleScan();
 
     const observer = new MutationObserver(() => {
@@ -121,12 +121,14 @@
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
-    window.addEventListener("keydown", (event) => {
-      if (event.altKey && event.key.toLowerCase() === "b") {
-        event.preventDefault();
-        togglePanel();
-      }
-    });
+    if (isTopFrame()) {
+      window.addEventListener("keydown", (event) => {
+        if (event.altKey && event.key.toLowerCase() === "b") {
+          event.preventDefault();
+          togglePanel();
+        }
+      });
+    }
 
     if (hasChromeStorage() && chrome.storage.onChanged) {
       chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -193,6 +195,10 @@
       chrome.storage &&
       chrome.storage.local
     );
+  }
+
+  function isTopFrame() {
+    return window.top === window;
   }
 
   async function saveRules(nextRules) {
@@ -290,7 +296,7 @@
       setHidden(node, isBlockedUserNode(node, uidSet, nameRules));
     });
 
-    blockCurrentPageOwner(uidSet, nameRules);
+    if (isTopFrame()) blockCurrentPageOwner(uidSet, nameRules);
   }
 
   function extractUid(node) {
@@ -344,7 +350,7 @@
       if (!element || isInsideExtensionUi(element)) return;
 
       const target = findCommentContainer(element, commentRules);
-      if (target) setHidden(target, true);
+      setHidden(target || findSmallestVisibleTextBlock(element), true);
     });
   }
 
@@ -413,6 +419,20 @@
     }
 
     return fallback;
+  }
+
+  function findSmallestVisibleTextBlock(start) {
+    let node = start;
+
+    for (let depth = 0; node && depth < 5; depth += 1, node = parentElementOrHost(node)) {
+      if (isInsideExtensionUi(node) || node === document.body || node === document.documentElement) {
+        break;
+      }
+
+      if (isReasonableCommentBlock(node)) return node;
+    }
+
+    return start;
   }
 
   function parentElementOrHost(node) {
