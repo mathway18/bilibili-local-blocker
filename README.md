@@ -33,28 +33,6 @@ scripts\open-chrome-extensions-and-copy-path.cmd
 
 它会打开 Chrome 扩展页面，并把 `extension` 文件夹路径复制到剪贴板。
 
-## 使用
-
-安装后，正常打开 B 站网页：
-
-```text
-https://www.bilibili.com/
-```
-
-页面右下角会出现“屏蔽设置”按钮。点击后可以添加或删除本地屏蔽规则。
-
-也可以点击 Chrome 工具栏里的扩展图标，它会打开完整的规则管理页。
-
-## UID 怎么找
-
-进入对方主页，网址中的数字就是 UID。例如：
-
-```text
-https://space.bilibili.com/123456
-```
-
-这里的 `123456` 就是 UID。
-
 ## 注意事项
 
 - 这是本地隐藏，不会增加或修改 B 站官方黑名单。
