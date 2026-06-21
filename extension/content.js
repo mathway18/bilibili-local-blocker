@@ -6,6 +6,7 @@
   const STYLE_ID = "bili-soft-block-style";
   const PANEL_ID = "bili-soft-block-panel";
   const BUTTON_ID = "bili-soft-block-button";
+  const PAGE_BLOCK_OVERLAY_ID = "bili-soft-block-page-overlay";
   const HIDDEN_ATTR = "data-bili-soft-block-hidden";
 
   const DEFAULT_RULES = {
@@ -79,8 +80,32 @@
     "[class*='danmaku']",
   ].join(",");
 
+  const USER_SELECTORS = [
+    ".user-card",
+    ".user-item",
+    ".search-user-card",
+    ".up-card",
+    ".up-info",
+    ".up-info-container",
+    ".membersinfo-normal",
+    ".bili-user-profile",
+    ".bili-dyn-item__author",
+    "[class*='user-card']",
+    "[class*='user-item']",
+  ].join(",");
+
+  const VIDEO_OWNER_SELECTORS = [
+    "#v_upinfo",
+    ".up-info",
+    ".up-info-container",
+    ".video-owner",
+    ".membersinfo-normal",
+    ".video-info-detail",
+  ];
+
   let rules = { ...DEFAULT_RULES };
   let scanTimer = 0;
+  let allowedBlockedPageKey = "";
 
   boot();
 
@@ -222,6 +247,7 @@
   function scanPage() {
     if (!rules.enabled) {
       resetHiddenState();
+      setPageBlocked(false);
       return;
     }
 
@@ -262,13 +288,37 @@
       const text = normalizeText(node.textContent);
       setHidden(node, includesAny(text, danmakuRules));
     });
+
+    document.querySelectorAll(USER_SELECTORS).forEach((node) => {
+      if (node.closest(`#${PANEL_ID}`)) return;
+      if (!getSpaceLink(node)) return;
+      setHidden(node, isBlockedUserNode(node, uidSet, nameRules));
+    });
+
+    blockCurrentPageOwner(uidSet, nameRules);
   }
 
   function extractUid(node) {
-    const link = node.querySelector("a[href*='space.bilibili.com']");
+    const link = getSpaceLink(node);
     const href = link ? link.getAttribute("href") || "" : "";
     const match = href.match(/space\.bilibili\.com\/(\d+)/);
     return match ? match[1] : "";
+  }
+
+  function getSpaceLink(node) {
+    if (!node || typeof node.querySelector !== "function") return null;
+    if (typeof node.matches === "function" && node.matches("a[href*='space.bilibili.com']")) {
+      return node;
+    }
+    return node.querySelector("a[href*='space.bilibili.com']");
+  }
+
+  function extractAuthor(node) {
+    const explicit = extractText(node, AUTHOR_SELECTORS);
+    if (explicit) return explicit;
+    const link = getSpaceLink(node);
+    if (!link) return "";
+    return link.getAttribute("title") || link.textContent || "";
   }
 
   function extractText(node, selector) {
@@ -283,6 +333,92 @@
 
   function includesAny(text, keywords) {
     return Boolean(text) && keywords.some((keyword) => keyword && text.includes(keyword));
+  }
+
+  function isBlockedUserNode(node, uidSet, nameRules) {
+    const uid = extractUid(node);
+    const author = normalizeText(extractAuthor(node));
+    return (uid && uidSet.has(uid)) || includesAny(author, nameRules);
+  }
+
+  function blockCurrentPageOwner(uidSet, nameRules) {
+    const owner = getCurrentPageOwner();
+    if (!owner) {
+      setPageBlocked(false);
+      return;
+    }
+    const blocked =
+      (owner.uid && uidSet.has(owner.uid)) ||
+      includesAny(normalizeText(owner.name), nameRules);
+    setPageBlocked(blocked, owner);
+  }
+
+  function getCurrentPageOwner() {
+    const host = location.hostname;
+    const path = location.pathname;
+
+    if (host === "space.bilibili.com") {
+      const match = path.match(/^\/(\d+)/);
+      return {
+        uid: match ? match[1] : "",
+        name: extractText(document, ".h-name,.nickname,.user-name,.name"),
+      };
+    }
+
+    if (!path.startsWith("/video/")) return null;
+
+    for (const selector of VIDEO_OWNER_SELECTORS) {
+      const node = document.querySelector(selector);
+      if (!node) continue;
+      const uid = extractUid(node);
+      const name = extractAuthor(node);
+      if (uid || name) return { uid, name };
+    }
+
+    return null;
+  }
+
+  function currentPageKey() {
+    return `${location.origin}${location.pathname}${location.search}`;
+  }
+
+  function setPageBlocked(blocked, owner = {}) {
+    const existing = document.getElementById(PAGE_BLOCK_OVERLAY_ID);
+    const pageKey = currentPageKey();
+    if (!blocked || allowedBlockedPageKey === pageKey) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    const overlay = existing || createPageBlockOverlay();
+    overlay.querySelector(".bili-soft-page-name").textContent =
+      owner.name || (owner.uid ? `UID ${owner.uid}` : "已屏蔽用户");
+    overlay.querySelector(".bili-soft-page-detail").textContent = owner.uid
+      ? `UID：${owner.uid}`
+      : "命中用户名关键词";
+    if (!existing) document.documentElement.appendChild(overlay);
+  }
+
+  function createPageBlockOverlay() {
+    const overlay = document.createElement("section");
+    overlay.id = PAGE_BLOCK_OVERLAY_ID;
+    overlay.innerHTML = `
+      <div class="bili-soft-page-card">
+        <h2>已拦截本地屏蔽用户</h2>
+        <div class="bili-soft-page-name"></div>
+        <div class="bili-soft-page-detail"></div>
+        <div class="bili-soft-page-actions">
+          <button type="button" class="bili-soft-page-allow">临时查看</button>
+          <button type="button" class="bili-soft-page-settings">屏蔽设置</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector(".bili-soft-page-allow").addEventListener("click", () => {
+      allowedBlockedPageKey = currentPageKey();
+      setPageBlocked(false);
+    });
+    overlay.querySelector(".bili-soft-page-settings").addEventListener("click", togglePanel);
+    return overlay;
   }
 
   function setHidden(node, hidden) {
@@ -305,6 +441,61 @@
     style.id = STYLE_ID;
     style.textContent = `
       [${HIDDEN_ATTR}="true"] { display: none !important; }
+      #${PAGE_BLOCK_OVERLAY_ID} {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483645;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        background: rgba(255,255,255,.94);
+        color: #18191c;
+        font: 14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      }
+      #${PAGE_BLOCK_OVERLAY_ID} .bili-soft-page-card {
+        width: min(420px, calc(100vw - 40px));
+        padding: 22px;
+        border: 1px solid rgba(0,0,0,.12);
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 18px 50px rgba(0,0,0,.18);
+        text-align: center;
+      }
+      #${PAGE_BLOCK_OVERLAY_ID} h2 {
+        margin: 0 0 12px;
+        font-size: 20px;
+        line-height: 1.3;
+      }
+      #${PAGE_BLOCK_OVERLAY_ID} .bili-soft-page-name {
+        margin-bottom: 4px;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      #${PAGE_BLOCK_OVERLAY_ID} .bili-soft-page-detail {
+        color: #61666d;
+      }
+      #${PAGE_BLOCK_OVERLAY_ID} .bili-soft-page-actions {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 18px;
+      }
+      #${PAGE_BLOCK_OVERLAY_ID} button {
+        min-height: 36px;
+        padding: 0 14px;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        background: #fff;
+        color: #18191c;
+        cursor: pointer;
+        font: inherit;
+      }
+      #${PAGE_BLOCK_OVERLAY_ID} .bili-soft-page-settings {
+        border-color: #00a1d6;
+        background: #00a1d6;
+        color: #fff;
+        font-weight: 650;
+      }
       #${BUTTON_ID} {
         position: fixed;
         right: 16px;
