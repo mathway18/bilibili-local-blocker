@@ -103,9 +103,24 @@
     ".video-info-detail",
   ];
 
+  const UID_ATTRIBUTE_NAMES = [
+    "uid",
+    "mid",
+    "user-id",
+    "userid",
+    "user_id",
+    "member-id",
+    "memberid",
+    "member_id",
+    "up-id",
+    "up-mid",
+    "account-id",
+  ];
+
   let rules = { ...DEFAULT_RULES };
   let scanTimer = 0;
   let allowedBlockedPageKey = "";
+  const authorUidMap = new Map();
 
   boot();
 
@@ -262,14 +277,19 @@
     const titleRules = rules.titleKeywords.map(normalizeText);
     const commentRules = rules.commentKeywords.map(normalizeText);
 
+    collectAuthorUidMap();
+
     document.querySelectorAll(CARD_SELECTORS).forEach((node) => {
       if (node.closest(`#${PANEL_ID}`)) return;
       const uid = extractUid(node);
-      const author = normalizeText(extractText(node, AUTHOR_SELECTORS));
+      const author = normalizeText(extractAuthor(node));
+      rememberAuthorUid(author, uid);
       const title = normalizeText(extractText(node, TITLE_SELECTORS));
       const text = normalizeText(node.textContent);
+      const mappedUid = authorUidMap.get(author);
       const shouldHide =
         (uid && uidSet.has(uid)) ||
+        (mappedUid && uidSet.has(mappedUid)) ||
         includesAny(author, nameRules) ||
         includesAny(title, titleRules) ||
         includesAny(text, titleRules);
@@ -279,10 +299,13 @@
     querySelectorAllDeep(COMMENT_SELECTORS).forEach((node) => {
       if (node.closest(`#${PANEL_ID}`)) return;
       const uid = extractUid(node);
-      const author = normalizeText(extractText(node, AUTHOR_SELECTORS));
+      const author = normalizeText(extractAuthor(node));
+      rememberAuthorUid(author, uid);
       const content = normalizeText(extractTextDeep(node, COMMENT_TEXT_SELECTORS) || node.innerText || node.textContent);
+      const mappedUid = authorUidMap.get(author);
       const shouldHide =
         (uid && uidSet.has(uid)) ||
+        (mappedUid && uidSet.has(mappedUid)) ||
         includesAny(author, nameRules) ||
         includesAny(content, commentRules);
       setHidden(node, shouldHide);
@@ -303,7 +326,8 @@
     const link = getSpaceLink(node);
     const href = link ? link.getAttribute("href") || "" : "";
     const match = href.match(/space\.bilibili\.com\/(\d+)/);
-    return match ? match[1] : "";
+    if (match) return match[1];
+    return extractUidFromAttributesDeep(node);
   }
 
   function getSpaceLink(node) {
@@ -311,15 +335,69 @@
     if (typeof node.matches === "function" && node.matches("a[href*='space.bilibili.com']")) {
       return node;
     }
-    return node.querySelector("a[href*='space.bilibili.com']");
+    return querySelectorAllDeep("a[href*='space.bilibili.com']", node)[0] || null;
   }
 
   function extractAuthor(node) {
-    const explicit = extractText(node, AUTHOR_SELECTORS);
+    const explicit = extractTextDeep(node, AUTHOR_SELECTORS) || extractText(node, AUTHOR_SELECTORS);
     if (explicit) return explicit;
     const link = getSpaceLink(node);
     if (!link) return "";
     return link.getAttribute("title") || link.textContent || "";
+  }
+
+  function collectAuthorUidMap() {
+    querySelectorAllDeep("a[href*='space.bilibili.com']").forEach((link) => {
+      const uid = extractUid(link);
+      const author = normalizeText(link.getAttribute("title") || link.textContent || "");
+      rememberAuthorUid(author, uid);
+    });
+
+    querySelectorAllDeep(COMMENT_SELECTORS).forEach((node) => {
+      const uid = extractUid(node);
+      const author = normalizeText(extractAuthor(node));
+      rememberAuthorUid(author, uid);
+    });
+  }
+
+  function rememberAuthorUid(author, uid) {
+    if (!author || !uid) return;
+    authorUidMap.set(author, uid);
+  }
+
+  function extractUidFromAttributesDeep(node) {
+    const elements = [node, ...querySelectorAllDeep("*", node)];
+
+    for (const element of elements) {
+      const uid = extractUidFromElementAttributes(element);
+      if (uid) return uid;
+    }
+
+    return "";
+  }
+
+  function extractUidFromElementAttributes(element) {
+    if (!element || !element.attributes) return "";
+
+    for (const attribute of Array.from(element.attributes)) {
+      const name = normalizeText(attribute.name);
+      const value = String(attribute.value || "").trim();
+      if (!value) continue;
+
+      const hrefMatch = value.match(/space\.bilibili\.com\/(\d+)/);
+      if (hrefMatch) return hrefMatch[1];
+
+      if (!looksLikeUidAttribute(name)) continue;
+      const uidMatch = value.match(/^\d+$/);
+      if (uidMatch) return uidMatch[0];
+    }
+
+    return "";
+  }
+
+  function looksLikeUidAttribute(name) {
+    const normalizedName = name.replace(/^data[-_:]/, "");
+    return UID_ATTRIBUTE_NAMES.some((candidate) => normalizedName === candidate);
   }
 
   function extractText(node, selector) {
@@ -487,7 +565,13 @@
   function isBlockedUserNode(node, uidSet, nameRules) {
     const uid = extractUid(node);
     const author = normalizeText(extractAuthor(node));
-    return (uid && uidSet.has(uid)) || includesAny(author, nameRules);
+    rememberAuthorUid(author, uid);
+    const mappedUid = authorUidMap.get(author);
+    return (
+      (uid && uidSet.has(uid)) ||
+      (mappedUid && uidSet.has(mappedUid)) ||
+      includesAny(author, nameRules)
+    );
   }
 
   function blockCurrentPageOwner(uidSet, nameRules) {
