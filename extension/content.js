@@ -74,10 +74,9 @@
 
   const DANMAKU_SELECTORS = [
     ".b-danmaku",
-    ".bpx-player-row-dm-wrap",
-    ".bpx-player-dm-wrap",
     ".bpx-player-dm-dm",
-    "[class*='danmaku']",
+    ".bili-danmaku-x-dm",
+    ".bili-danmaku-x-dm-item",
   ].join(",");
 
   const USER_SELECTORS = [
@@ -115,8 +114,12 @@
     rules = await loadRules();
     openPanelWhenEmpty();
     scheduleScan();
+    window.setInterval(scanDanmaku, 500);
 
-    const observer = new MutationObserver(scheduleScan);
+    const observer = new MutationObserver((mutations) => {
+      processAddedDanmaku(mutations);
+      scheduleScan();
+    });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
     window.addEventListener("keydown", (event) => {
@@ -283,11 +286,7 @@
       setHidden(node, shouldHide);
     });
 
-    document.querySelectorAll(DANMAKU_SELECTORS).forEach((node) => {
-      if (node.closest(`#${PANEL_ID}`)) return;
-      const text = normalizeText(node.textContent);
-      setHidden(node, includesAny(text, danmakuRules));
-    });
+    scanDanmaku(danmakuRules);
 
     document.querySelectorAll(USER_SELECTORS).forEach((node) => {
       if (node.closest(`#${PANEL_ID}`)) return;
@@ -333,6 +332,51 @@
 
   function includesAny(text, keywords) {
     return Boolean(text) && keywords.some((keyword) => keyword && text.includes(keyword));
+  }
+
+  function isDanmakuItem(node) {
+    const text = normalizeText(node.textContent);
+    if (!text) return false;
+    if (node.querySelector(DANMAKU_SELECTORS)) return false;
+
+    const className = String(node.className || "");
+    if (/(^|[-_\s])(wrap|container|layer|mask|root|row|area|stage|screen)([-_\s]|$)/i.test(className)) {
+      return false;
+    }
+
+    return node.children.length <= 2;
+  }
+
+  function processAddedDanmaku(mutations) {
+    if (!rules.enabled || !rules.danmakuKeywords.length) return;
+    const danmakuRules = rules.danmakuKeywords.map(normalizeText);
+
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        if (node.matches(DANMAKU_SELECTORS)) {
+          applyDanmakuRules(node, danmakuRules);
+        }
+        node.querySelectorAll(DANMAKU_SELECTORS).forEach((child) => {
+          applyDanmakuRules(child, danmakuRules);
+        });
+      });
+    });
+  }
+
+  function scanDanmaku(preparedRules) {
+    if (!rules.enabled) return;
+    const danmakuRules = preparedRules || rules.danmakuKeywords.map(normalizeText);
+    if (!danmakuRules.length) return;
+    document.querySelectorAll(DANMAKU_SELECTORS).forEach((node) => {
+      applyDanmakuRules(node, danmakuRules);
+    });
+  }
+
+  function applyDanmakuRules(node, danmakuRules) {
+    if (node.closest(`#${PANEL_ID}`) || !isDanmakuItem(node)) return;
+    const text = normalizeText(node.textContent);
+    setHidden(node, includesAny(text, danmakuRules));
   }
 
   function isBlockedUserNode(node, uidSet, nameRules) {
