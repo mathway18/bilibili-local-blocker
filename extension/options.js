@@ -6,7 +6,6 @@ const DEFAULT_RULES = {
   names: [],
   titleKeywords: [],
   commentKeywords: [],
-  danmakuKeywords: [],
 };
 
 const CATEGORIES = [
@@ -14,7 +13,6 @@ const CATEGORIES = [
   { key: "names", empty: "还没有用户名关键词" },
   { key: "titleKeywords", empty: "还没有视频标题关键词" },
   { key: "commentKeywords", empty: "还没有评论关键词" },
-  { key: "danmakuKeywords", empty: "还没有弹幕关键词" },
 ];
 
 const fields = {
@@ -181,7 +179,6 @@ function normalizeRules(value) {
     names: uniqueClean(next.names),
     titleKeywords: uniqueClean(next.titleKeywords),
     commentKeywords: uniqueClean(next.commentKeywords),
-    danmakuKeywords: uniqueClean(next.danmakuKeywords),
   };
 }
 

@@ -15,7 +15,6 @@
     names: [],
     titleKeywords: [],
     commentKeywords: [],
-    danmakuKeywords: [],
   };
 
   const CARD_SELECTORS = [
@@ -72,13 +71,6 @@
     "[class*='content']",
   ].join(",");
 
-  const DANMAKU_SELECTORS = [
-    ".b-danmaku",
-    ".bpx-player-dm-dm",
-    ".bili-danmaku-x-dm",
-    ".bili-danmaku-x-dm-item",
-  ].join(",");
-
   const USER_SELECTORS = [
     ".user-card",
     ".user-item",
@@ -114,10 +106,8 @@
     rules = await loadRules();
     openPanelWhenEmpty();
     scheduleScan();
-    window.setInterval(scanDanmaku, 500);
 
-    const observer = new MutationObserver((mutations) => {
-      processAddedDanmaku(mutations);
+    const observer = new MutationObserver(() => {
       scheduleScan();
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
@@ -211,7 +201,6 @@
       names: uniqueClean(next.names),
       titleKeywords: uniqueClean(next.titleKeywords),
       commentKeywords: uniqueClean(next.commentKeywords),
-      danmakuKeywords: uniqueClean(next.danmakuKeywords),
     };
   }
 
@@ -234,8 +223,7 @@
       value.uids.length ||
       value.names.length ||
       value.titleKeywords.length ||
-      value.commentKeywords.length ||
-      value.danmakuKeywords.length
+      value.commentKeywords.length
     );
   }
 
@@ -258,7 +246,6 @@
     const nameRules = rules.names.map(normalizeText);
     const titleRules = rules.titleKeywords.map(normalizeText);
     const commentRules = rules.commentKeywords.map(normalizeText);
-    const danmakuRules = rules.danmakuKeywords.map(normalizeText);
 
     document.querySelectorAll(CARD_SELECTORS).forEach((node) => {
       if (node.closest(`#${PANEL_ID}`)) return;
@@ -285,8 +272,6 @@
         includesAny(content, commentRules);
       setHidden(node, shouldHide);
     });
-
-    scanDanmaku(danmakuRules);
 
     document.querySelectorAll(USER_SELECTORS).forEach((node) => {
       if (node.closest(`#${PANEL_ID}`)) return;
@@ -332,51 +317,6 @@
 
   function includesAny(text, keywords) {
     return Boolean(text) && keywords.some((keyword) => keyword && text.includes(keyword));
-  }
-
-  function isDanmakuItem(node) {
-    const text = normalizeText(node.textContent);
-    if (!text) return false;
-    if (node.querySelector(DANMAKU_SELECTORS)) return false;
-
-    const className = String(node.className || "");
-    if (/(^|[-_\s])(wrap|container|layer|mask|root|row|area|stage|screen)([-_\s]|$)/i.test(className)) {
-      return false;
-    }
-
-    return node.children.length <= 2;
-  }
-
-  function processAddedDanmaku(mutations) {
-    if (!rules.enabled || !rules.danmakuKeywords.length) return;
-    const danmakuRules = rules.danmakuKeywords.map(normalizeText);
-
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType !== Node.ELEMENT_NODE) return;
-        if (node.matches(DANMAKU_SELECTORS)) {
-          applyDanmakuRules(node, danmakuRules);
-        }
-        node.querySelectorAll(DANMAKU_SELECTORS).forEach((child) => {
-          applyDanmakuRules(child, danmakuRules);
-        });
-      });
-    });
-  }
-
-  function scanDanmaku(preparedRules) {
-    if (!rules.enabled) return;
-    const danmakuRules = preparedRules || rules.danmakuKeywords.map(normalizeText);
-    if (!danmakuRules.length) return;
-    document.querySelectorAll(DANMAKU_SELECTORS).forEach((node) => {
-      applyDanmakuRules(node, danmakuRules);
-    });
-  }
-
-  function applyDanmakuRules(node, danmakuRules) {
-    if (node.closest(`#${PANEL_ID}`) || !isDanmakuItem(node)) return;
-    const text = normalizeText(node.textContent);
-    setHidden(node, includesAny(text, danmakuRules));
   }
 
   function isBlockedUserNode(node, uidSet, nameRules) {
@@ -778,13 +718,12 @@
       ${createRuleSectionMarkup("names", "用户名关键词", "输入用户名关键词")}
       ${createRuleSectionMarkup("titleKeywords", "视频标题关键词", "输入标题关键词")}
       ${createRuleSectionMarkup("commentKeywords", "评论关键词", "输入评论关键词")}
-      ${createRuleSectionMarkup("danmakuKeywords", "弹幕关键词", "输入弹幕关键词")}
       <div class="bili-soft-actions">
         <button class="primary" id="bili-soft-save" type="button">保存</button>
         <button id="bili-soft-options" type="button">打开管理器</button>
         <button id="bili-soft-close" type="button">关闭</button>
       </div>
-      <div class="bili-soft-note">UID 屏蔽最准确；用户名和关键词属于本地模糊隐藏。弹幕只能按文本关键词隐藏。</div>
+      <div class="bili-soft-note">UID 屏蔽最准确；用户名和关键词属于本地模糊隐藏。</div>
     `;
 
     bindPanel(panel);
@@ -819,7 +758,7 @@
       button.addEventListener("click", () => addPanelItem(panel, button.dataset.biliSoftAdd));
     });
 
-    ["uids", "names", "titleKeywords", "commentKeywords", "danmakuKeywords"].forEach((key) => {
+    ["uids", "names", "titleKeywords", "commentKeywords"].forEach((key) => {
       const input = panel.querySelector(`#bili-soft-input-${key}`);
       input.addEventListener("keydown", (event) => {
         if (event.key !== "Enter") return;
@@ -851,7 +790,7 @@
   function refreshPanelValues(panel = document.getElementById(PANEL_ID)) {
     if (!panel) return;
     panel.querySelector("#bili-soft-enabled").checked = rules.enabled;
-    ["uids", "names", "titleKeywords", "commentKeywords", "danmakuKeywords"].forEach((key) => {
+    ["uids", "names", "titleKeywords", "commentKeywords"].forEach((key) => {
       renderPanelCategory(panel, key);
     });
   }
@@ -863,7 +802,6 @@
       names: rules.names,
       titleKeywords: rules.titleKeywords,
       commentKeywords: rules.commentKeywords,
-      danmakuKeywords: rules.danmakuKeywords,
     };
   }
 
