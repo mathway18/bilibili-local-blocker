@@ -43,10 +43,11 @@ scripts\open-chrome-extensions-and-copy-path.cmd
 ```text
 extension/
   manifest.json
-  background.js
   content.js
   options.html
   options.js
+  popup.html
+  popup.js
 scripts/
   open-chrome-extensions-and-copy-path.cmd
 ```
