@@ -282,6 +282,8 @@
       setHidden(node, shouldHide);
     });
 
+    scanCommentTextFallback(commentRules);
+
     document.querySelectorAll(USER_SELECTORS).forEach((node) => {
       if (node.closest(`#${PANEL_ID}`)) return;
       if (!getSpaceLink(node)) return;
@@ -332,6 +334,134 @@
 
   function includesAny(text, keywords) {
     return Boolean(text) && keywords.some((keyword) => keyword && text.includes(keyword));
+  }
+
+  function scanCommentTextFallback(commentRules) {
+    if (!commentRules.length) return;
+
+    findTextMatchesDeep(commentRules).forEach((textNode) => {
+      const element = textNode.parentElement;
+      if (!element || isInsideExtensionUi(element)) return;
+
+      const target = findCommentContainer(element, commentRules);
+      if (target) setHidden(target, true);
+    });
+  }
+
+  function findTextMatchesDeep(keywords) {
+    const matches = [];
+    const visitedRoots = new Set();
+
+    const scanRoot = (root) => {
+      if (!root || visitedRoots.has(root)) return;
+      visitedRoots.add(root);
+
+      const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(node) {
+            const text = normalizeText(node.nodeValue);
+            if (!text || !includesAny(text, keywords)) return NodeFilter.FILTER_REJECT;
+            const parent = node.parentElement;
+            if (!parent || isInsideExtensionUi(parent) || isIgnoredTextParent(parent)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        }
+      );
+
+      while (matches.length < 200) {
+        const node = walker.nextNode();
+        if (!node) break;
+        matches.push(node);
+      }
+
+      if (typeof root.querySelectorAll === "function") {
+        root.querySelectorAll("*").forEach((element) => {
+          if (element.shadowRoot) scanRoot(element.shadowRoot);
+        });
+      }
+    };
+
+    scanRoot(document.body || document.documentElement);
+    return matches;
+  }
+
+  function findCommentContainer(start, commentRules) {
+    let node = start;
+    let fallback = null;
+
+    for (let depth = 0; node && depth < 10; depth += 1, node = parentElementOrHost(node)) {
+      if (isInsideExtensionUi(node) || node === document.body || node === document.documentElement) {
+        break;
+      }
+
+      if (isCommentLikeNode(node)) return node;
+
+      const text = normalizeText(node.innerText || node.textContent);
+      if (!includesAny(text, commentRules)) continue;
+
+      if (!fallback && isReasonableCommentBlock(node)) {
+        fallback = node;
+      }
+
+      if (isLikelyCommentActionBlock(text) && isReasonableCommentBlock(node)) {
+        return node;
+      }
+    }
+
+    return fallback;
+  }
+
+  function parentElementOrHost(node) {
+    if (node.parentElement) return node.parentElement;
+    const root = node.getRootNode ? node.getRootNode() : null;
+    return root && root.host ? root.host : null;
+  }
+
+  function isCommentLikeNode(node) {
+    if (!node || typeof node.matches !== "function") return false;
+    const tagName = normalizeText(node.tagName);
+    const classAndId = normalizeText(`${node.className || ""} ${node.id || ""}`);
+
+    return (
+      node.matches(COMMENT_SELECTORS) ||
+      /comment|reply/.test(tagName) ||
+      /comment|reply/.test(classAndId)
+    );
+  }
+
+  function isLikelyCommentActionBlock(text) {
+    return /回复|点赞|举报|踩|赞/.test(text);
+  }
+
+  function isReasonableCommentBlock(node) {
+    const text = String(node.innerText || node.textContent || "").trim();
+    const rect = typeof node.getBoundingClientRect === "function"
+      ? node.getBoundingClientRect()
+      : { width: 0, height: 0 };
+
+    return (
+      text.length > 0 &&
+      text.length <= 800 &&
+      rect.height <= 420
+    );
+  }
+
+  function isInsideExtensionUi(element) {
+    return Boolean(
+      element.closest &&
+      (element.closest(`#${PANEL_ID}`) ||
+        element.closest(`#${BUTTON_ID}`) ||
+        element.closest(`#${PAGE_BLOCK_OVERLAY_ID}`))
+    );
+  }
+
+  function isIgnoredTextParent(element) {
+    const tagName = normalizeText(element.tagName);
+    return /^(script|style|noscript|textarea|input|option|select)$/.test(tagName);
   }
 
   function isBlockedUserNode(node, uidSet, nameRules) {
