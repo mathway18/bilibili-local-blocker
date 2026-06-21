@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bilibili 本地屏蔽器",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "在本机浏览器隐藏指定 B 站 UID、用户名、标题关键词和评论关键词。",
   "permissions": [
     "storage",

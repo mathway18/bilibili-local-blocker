@@ -8,6 +8,7 @@
   const BUTTON_ID = "bili-soft-block-button";
   const PAGE_BLOCK_OVERLAY_ID = "bili-soft-block-page-overlay";
   const HIDDEN_ATTR = "data-bili-soft-block-hidden";
+  const HIDDEN_DISPLAY_ATTR = "data-bili-soft-block-display";
 
   const DEFAULT_RULES = {
     enabled: true,
@@ -40,6 +41,14 @@
     ".sub-reply-item",
     ".comment-list .list-item",
     ".bili-comment",
+    ".comment-item",
+    ".reply-card",
+    "bili-comment-renderer",
+    "bili-comment-thread-renderer",
+    "bili-reply-renderer",
+    "bili-comment-reply-renderer",
+    "[class*='comment-renderer']",
+    "[class*='reply-renderer']",
     "[class*='reply-item']",
     "[class*='comment-item']",
   ].join(",");
@@ -261,11 +270,11 @@
       setHidden(node, shouldHide);
     });
 
-    document.querySelectorAll(COMMENT_SELECTORS).forEach((node) => {
+    querySelectorAllDeep(COMMENT_SELECTORS).forEach((node) => {
       if (node.closest(`#${PANEL_ID}`)) return;
       const uid = extractUid(node);
       const author = normalizeText(extractText(node, AUTHOR_SELECTORS));
-      const content = normalizeText(extractText(node, COMMENT_TEXT_SELECTORS) || node.textContent);
+      const content = normalizeText(extractTextDeep(node, COMMENT_TEXT_SELECTORS) || node.innerText || node.textContent);
       const shouldHide =
         (uid && uidSet.has(uid)) ||
         includesAny(author, nameRules) ||
@@ -309,6 +318,12 @@
     const target = node.querySelector(selector);
     if (!target) return "";
     return target.getAttribute("title") || target.textContent || "";
+  }
+
+  function extractTextDeep(node, selector) {
+    const target = querySelectorAllDeep(selector, node)[0];
+    if (!target) return "";
+    return target.getAttribute("title") || target.innerText || target.textContent || "";
   }
 
   function normalizeText(text) {
@@ -408,15 +423,66 @@
   function setHidden(node, hidden) {
     if (hidden) {
       node.setAttribute(HIDDEN_ATTR, "true");
+      if (node.style && !node.hasAttribute(HIDDEN_DISPLAY_ATTR)) {
+        node.setAttribute(HIDDEN_DISPLAY_ATTR, node.style.display || "");
+        node.style.setProperty("display", "none", "important");
+      }
     } else if (node.getAttribute(HIDDEN_ATTR) === "true") {
       node.removeAttribute(HIDDEN_ATTR);
+      if (node.style && node.hasAttribute(HIDDEN_DISPLAY_ATTR)) {
+        const previousDisplay = node.getAttribute(HIDDEN_DISPLAY_ATTR);
+        if (previousDisplay) {
+          node.style.display = previousDisplay;
+        } else {
+          node.style.removeProperty("display");
+        }
+        node.removeAttribute(HIDDEN_DISPLAY_ATTR);
+      }
     }
   }
 
   function resetHiddenState() {
-    document.querySelectorAll(`[${HIDDEN_ATTR}]`).forEach((node) => {
+    querySelectorAllDeep(`[${HIDDEN_ATTR}]`).forEach((node) => {
       node.removeAttribute(HIDDEN_ATTR);
+      if (node.style && node.hasAttribute(HIDDEN_DISPLAY_ATTR)) {
+        const previousDisplay = node.getAttribute(HIDDEN_DISPLAY_ATTR);
+        if (previousDisplay) {
+          node.style.display = previousDisplay;
+        } else {
+          node.style.removeProperty("display");
+        }
+        node.removeAttribute(HIDDEN_DISPLAY_ATTR);
+      }
     });
+  }
+
+  function querySelectorAllDeep(selector, root = document) {
+    const results = [];
+    const seen = new Set();
+
+    const add = (node) => {
+      if (!node || seen.has(node)) return;
+      seen.add(node);
+      results.push(node);
+    };
+
+    const scan = (scope) => {
+      if (!scope) return;
+
+      if (scope.nodeType === Node.ELEMENT_NODE && scope.matches(selector)) {
+        add(scope);
+      }
+
+      if (typeof scope.querySelectorAll === "function") {
+        scope.querySelectorAll(selector).forEach(add);
+        scope.querySelectorAll("*").forEach((element) => {
+          if (element.shadowRoot) scan(element.shadowRoot);
+        });
+      }
+    };
+
+    scan(root);
+    return results;
   }
 
   function injectStyle() {
