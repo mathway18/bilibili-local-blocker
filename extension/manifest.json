@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Bilibili 本地屏蔽器",
+  "version": "0.1.2",
+  "description": "在本机浏览器隐藏指定 B 站 UID、用户名、标题关键词、评论关键词和弹幕关键词。",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "打开 B站本地屏蔽管理器"
+  },
+  "host_permissions": [
+    "https://bilibili.com/*",
+    "https://*.bilibili.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://bilibili.com/*",
+        "https://*.bilibili.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

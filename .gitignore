@@ -1,0 +1,20 @@
+# Browser profiles and local test data
+*-profile/
+*profile*/
+edge-*/
+chrome-*/
+
+# Packed extension artifacts and signing keys
+*.crx
+*.pem
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+.DS_Store
+Thumbs.db
+
+# Editor metadata
+.vscode/
+.idea/

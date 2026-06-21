@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>B站本地屏蔽管理器</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --text: #18191c;
+      --muted: #61666d;
+      --border: #d0d7de;
+      --primary: #00a1d6;
+      --bg: #f6f8fa;
+      --panel: #fff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    html, body {
+      min-width: 360px;
+    }
+    main {
+      width: min(980px, calc(100vw - 32px));
+      margin: 28px auto;
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 10px 28px rgba(0,0,0,.08);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      line-height: 1.25;
+      word-break: keep-all;
+    }
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+    }
+    .library-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    label {
+      display: block;
+      font-weight: 650;
+    }
+    .rule-card {
+      min-height: 212px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .rule-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .count {
+      min-width: 30px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #eef6fb;
+      color: #0077a8;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .add-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    input[type="text"] {
+      width: 100%;
+      min-width: 0;
+      height: 36px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      background: #fff;
+      font: inherit;
+    }
+    .rule-list {
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      gap: 8px;
+      min-height: 96px;
+      max-height: 188px;
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .rule-item {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      min-height: 30px;
+      border: 1px solid #d0d7de;
+      border-radius: 999px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .rule-text {
+      min-width: 0;
+      max-width: 260px;
+      padding: 0 9px 0 11px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .remove-rule {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 0;
+      border-left: 1px solid #e5e7eb;
+      border-radius: 0;
+      background: #fff;
+      color: #61666d;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .empty {
+      color: var(--muted);
+      font-size: 13px;
+      align-self: center;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 12px 0 18px;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    button {
+      min-height: 36px;
+      padding: 0 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+    }
+    button.primary {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #fff;
+      font-weight: 650;
+    }
+    .status {
+      min-height: 22px;
+      margin-top: 12px;
+      color: #00875a;
+      font-weight: 650;
+    }
+    .note {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (max-width: 720px) {
+      main { width: calc(100vw - 20px); margin: 10px auto; padding: 16px; }
+      .library-grid { grid-template-columns: 1fr; }
+      .rule-card { min-height: 190px; }
+      .rule-list { max-height: 150px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>B站本地屏蔽管理器</h1>
+    <p>规则只保存在这个浏览器配置里，不修改你的 B 站账号黑名单。</p>
+
+    <div class="row">
+      <input id="enabled" type="checkbox">
+      <label for="enabled" style="margin:0;">启用本地屏蔽</label>
+    </div>
+
+    <div class="library-grid">
+      <section class="rule-card" data-category="uids">
+        <div class="rule-head">
+          <label for="input-uids">本地拉黑 UID</label>
+          <span class="count" id="count-uids">0</span>
+        </div>
+        <div class="add-row">
+          <input id="input-uids" type="text" inputmode="numeric" spellcheck="false" placeholder="输入 UID，例如 123456">
+          <button type="button" data-add="uids">添加</button>
+        </div>
+        <div class="rule-list" id="list-uids"></div>
+      </section>
+      <section class="rule-card" data-category="names">
+        <div class="rule-head">
+          <label for="input-names">用户名关键词</label>
+          <span class="count" id="count-names">0</span>
+        </div>
+        <div class="add-row">
+          <input id="input-names" type="text" spellcheck="false" placeholder="输入用户名或名字关键词">
+          <button type="button" data-add="names">添加</button>
+        </div>
+        <div class="rule-list" id="list-names"></div>
+      </section>
+      <section class="rule-card" data-category="titleKeywords">
+        <div class="rule-head">
+          <label for="input-titleKeywords">视频标题关键词</label>
+          <span class="count" id="count-titleKeywords">0</span>
+        </div>
+        <div class="add-row">
+          <input id="input-titleKeywords" type="text" spellcheck="false" placeholder="输入标题关键词">
+          <button type="button" data-add="titleKeywords">添加</button>
+        </div>
+        <div class="rule-list" id="list-titleKeywords"></div>
+      </section>
+      <section class="rule-card" data-category="commentKeywords">
+        <div class="rule-head">
+          <label for="input-commentKeywords">评论关键词</label>
+          <span class="count" id="count-commentKeywords">0</span>
+        </div>
+        <div class="add-row">
+          <input id="input-commentKeywords" type="text" spellcheck="false" placeholder="输入评论关键词">
+          <button type="button" data-add="commentKeywords">添加</button>
+        </div>
+        <div class="rule-list" id="list-commentKeywords"></div>
+      </section>
+      <section class="rule-card" data-category="danmakuKeywords">
+        <div class="rule-head">
+          <label for="input-danmakuKeywords">弹幕关键词</label>
+          <span class="count" id="count-danmakuKeywords">0</span>
+        </div>
+        <div class="add-row">
+          <input id="input-danmakuKeywords" type="text" spellcheck="false" placeholder="输入弹幕关键词">
+          <button type="button" data-add="danmakuKeywords">添加</button>
+        </div>
+        <div class="rule-list" id="list-danmakuKeywords"></div>
+      </section>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="save" type="button">保存规则</button>
+      <button id="openBili" type="button">打开 B 站</button>
+      <button id="export" type="button">导出规则</button>
+      <button id="import" type="button">导入规则</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="note">UID 屏蔽最准确：进入对方主页时，网址里的数字就是 UID。用户名和关键词是本地模糊隐藏。弹幕只能按文本关键词隐藏。</div>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>
