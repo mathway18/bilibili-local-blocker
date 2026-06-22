@@ -313,7 +313,7 @@
     });
 
     scanCommentTextFallback(commentRules);
-    scanCommentTextFallback(nameRules);
+    scanCommentAuthorFallback(nameRules);
 
     querySelectorAllDeep(USER_SELECTORS).forEach((node) => {
       if (node.closest(`#${PANEL_ID}`)) return;
@@ -434,6 +434,28 @@
     });
   }
 
+  function scanCommentAuthorFallback(nameRules) {
+    if (!nameRules.length) return;
+
+    const starts = new Set();
+
+    findTextMatchesDeep(nameRules).forEach((textNode) => {
+      if (textNode.parentElement) starts.add(textNode.parentElement);
+    });
+
+    querySelectorAllDeep(AUTHOR_SELECTORS).forEach((element) => {
+      const text = normalizeText(element.getAttribute("title") || element.innerText || element.textContent);
+      if (includesAny(text, nameRules)) starts.add(element);
+    });
+
+    starts.forEach((element) => {
+      if (!element || isInsideExtensionUi(element)) return;
+
+      const target = findCommentThreadContainer(element, nameRules);
+      if (target) setHidden(target, true);
+    });
+  }
+
   function findTextMatchesDeep(keywords) {
     const matches = [];
     const visitedRoots = new Set();
@@ -501,6 +523,113 @@
     return fallback;
   }
 
+  function findCommentThreadContainer(start, nameRules) {
+    const candidates = [];
+    let node = start;
+
+    for (let depth = 0; node && depth < 14; depth += 1, node = parentElementOrHost(node)) {
+      if (isInsideExtensionUi(node) || node === document.body || node === document.documentElement) {
+        break;
+      }
+
+      const text = normalizeText(node.innerText || node.textContent);
+      if (!includesAny(text, nameRules)) continue;
+
+      const score = scoreCommentThreadCandidate(node);
+      if (score > 0) {
+        candidates.push({ node, score, depth, area: getElementArea(node) });
+      }
+    }
+
+    if (!candidates.length) return null;
+
+    const explicitSubReply = candidates.find((candidate) => isSubReplyLikeNode(candidate.node));
+    if (explicitSubReply) return explicitSubReply.node;
+
+    const explicitThread = [...candidates]
+      .reverse()
+      .find((candidate) => isCommentThreadLikeNode(candidate.node));
+    if (explicitThread) return explicitThread.node;
+
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.area !== a.area) return b.area - a.area;
+      return b.depth - a.depth;
+    });
+
+    return candidates[0].node;
+  }
+
+  function scoreCommentThreadCandidate(node) {
+    const text = String(node.innerText || node.textContent || "").trim();
+    if (!text) return 0;
+    if (text.length > 6000) return 0;
+
+    const rect = getElementRect(node);
+    const classAndId = normalizeText(`${node.className || ""} ${node.id || ""} ${node.tagName || ""}`);
+    let score = 0;
+
+    if (isCommentLikeNode(node)) score += 6;
+    if (isCommentThreadLikeNode(node)) score += 5;
+    if (isSubReplyLikeNode(node)) score += 4;
+    if (hasCommentActionText(text)) score += 3;
+    if (hasCommentTimeText(text)) score += 2;
+    if (hasAvatarLikeNode(node)) score += 2;
+    if (/comment|reply|评论|回复/.test(classAndId)) score += 2;
+    if (node.children && node.children.length >= 2) score += 1;
+
+    if (rect.height > 0 && rect.height < 18) score -= 4;
+    if (rect.width > 0 && rect.width < 80) score -= 3;
+    if (text.length > 3000) score -= 5;
+
+    return score;
+  }
+
+  function isCommentThreadLikeNode(node) {
+    const signature = getElementSignature(node);
+    if (isSubReplyLikeNode(node)) return false;
+    return (
+      /comment-thread|reply-wrap|root-reply|thread-renderer|bili-comment-thread|bili-comment-renderer/.test(signature) ||
+      /(^|[\s_-])reply-item($|[\s_-])/.test(signature) ||
+      /(^|[\s_-])comment-item($|[\s_-])/.test(signature)
+    );
+  }
+
+  function isSubReplyLikeNode(node) {
+    const signature = getElementSignature(node);
+    return /sub-reply|comment-reply|reply-item-sub|bili-comment-reply-renderer/.test(signature);
+  }
+
+  function getElementSignature(node) {
+    if (!node) return "";
+    return normalizeText(`${node.tagName || ""} ${node.className || ""} ${node.id || ""}`);
+  }
+
+  function hasCommentActionText(text) {
+    return /回复|点赞|举报|踩|赞/.test(text);
+  }
+
+  function hasCommentTimeText(text) {
+    return /\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}:\d{2}/.test(text);
+  }
+
+  function hasAvatarLikeNode(node) {
+    return Boolean(
+      querySelectorAllDeep("img,[class*='avatar'],[class*='face'],[class*='头像']", node)[0]
+    );
+  }
+
+  function getElementRect(node) {
+    return typeof node.getBoundingClientRect === "function"
+      ? node.getBoundingClientRect()
+      : { width: 0, height: 0 };
+  }
+
+  function getElementArea(node) {
+    const rect = getElementRect(node);
+    return Math.max(0, rect.width) * Math.max(0, rect.height);
+  }
+
   function findSmallestVisibleTextBlock(start) {
     let node = start;
 
@@ -534,7 +663,7 @@
   }
 
   function isLikelyCommentActionBlock(text) {
-    return /回复|点赞|举报|踩|赞/.test(text);
+    return hasCommentActionText(text);
   }
 
   function isReasonableCommentBlock(node) {
