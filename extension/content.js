@@ -39,6 +39,7 @@
     ".reply-item",
     ".reply-wrap",
     ".sub-reply-item",
+    ".root-reply-container",
     ".comment-list .list-item",
     ".bili-comment",
     ".comment-item",
@@ -53,13 +54,40 @@
     "[class*='comment-item']",
   ].join(",");
 
+  const BILI_MAIN_COMMENT_SELECTORS = [
+    "div.reply-item",
+    "div.reply-wrap",
+    "bili-comment-thread-renderer",
+    "bili-comment-renderer",
+    "[class~='reply-item']",
+    "[class~='reply-wrap']",
+    "[class*='comment-thread']",
+  ].join(",");
+
+  const BILI_SUB_COMMENT_SELECTORS = [
+    "div.sub-reply-item",
+    "bili-comment-reply-renderer",
+    "[class~='sub-reply-item']",
+    "[class*='comment-reply']",
+  ].join(",");
+
+  const BILI_COMMENT_AUTHOR_SELECTORS = [
+    "div.root-reply-container div.user-info",
+    "div.sub-reply-item > div.sub-user-info",
+    "div[data-user-id]",
+    "[data-user-id]",
+  ].join(",");
+
   const AUTHOR_SELECTORS = [
     "a[href*='space.bilibili.com']",
+    BILI_COMMENT_AUTHOR_SELECTORS,
     ".up-name",
     ".bili-video-card__info--author",
     ".bili-video-card__info--owner",
     ".name",
     ".user-name",
+    ".user-info",
+    ".sub-user-info",
     "[class*='user-name']",
     "[class*='author']",
   ].join(",");
@@ -303,13 +331,16 @@
       rememberAuthorUid(author, uid);
       const content = normalizeText(extractTextDeep(node, COMMENT_TEXT_SELECTORS) || node.innerText || node.textContent);
       const mappedUid = authorUidMap.get(author);
-      const shouldHide =
+      const userBlocked =
         (uid && uidSet.has(uid)) ||
         (mappedUid && uidSet.has(mappedUid)) ||
         includesAny(author, nameRules) ||
-        includesAny(content, nameRules) ||
-        includesAny(content, commentRules);
-      setHidden(node, shouldHide);
+        includesAny(content, nameRules);
+      const commentBlocked = includesAny(content, commentRules);
+      const target = userBlocked
+        ? findKnownBilibiliCommentContainer(node) || findCommentThreadContainer(node, nameRules)
+        : node;
+      setHidden(target || node, userBlocked || commentBlocked);
     });
 
     scanCommentTextFallback(commentRules);
@@ -443,7 +474,7 @@
       if (textNode.parentElement) starts.add(textNode.parentElement);
     });
 
-    querySelectorAllDeep(AUTHOR_SELECTORS).forEach((element) => {
+    querySelectorAllDeep(`${AUTHOR_SELECTORS},${BILI_COMMENT_AUTHOR_SELECTORS}`).forEach((element) => {
       const text = normalizeText(element.getAttribute("title") || element.innerText || element.textContent);
       if (includesAny(text, nameRules)) starts.add(element);
     });
@@ -524,6 +555,9 @@
   }
 
   function findCommentThreadContainer(start, nameRules) {
+    const knownContainer = findKnownBilibiliCommentContainer(start);
+    if (knownContainer) return knownContainer;
+
     const candidates = [];
     let node = start;
 
@@ -558,6 +592,45 @@
     });
 
     return candidates[0].node;
+  }
+
+  function findKnownBilibiliCommentContainer(start) {
+    const subComment = closestDeep(start, BILI_SUB_COMMENT_SELECTORS);
+    if (isSafeKnownCommentContainer(subComment)) return subComment;
+
+    const mainComment = closestDeep(start, BILI_MAIN_COMMENT_SELECTORS);
+    if (isSafeKnownCommentContainer(mainComment)) return mainComment;
+
+    return null;
+  }
+
+  function closestDeep(start, selector) {
+    for (let node = start; node; node = parentElementOrHost(node)) {
+      if (isInsideExtensionUi(node) || node === document.body || node === document.documentElement) {
+        return null;
+      }
+
+      if (typeof node.matches === "function" && node.matches(selector)) {
+        return node;
+      }
+    }
+
+    return null;
+  }
+
+  function isSafeKnownCommentContainer(node) {
+    if (!node || isInsideExtensionUi(node)) return false;
+
+    const text = String(node.innerText || node.textContent || "").trim();
+    const signature = getElementSignature(node);
+    const nestedCommentCount = querySelectorAllDeep(COMMENT_SELECTORS, node).length;
+
+    return (
+      text.length > 0 &&
+      text.length <= 6000 &&
+      !/reply-list|comment-list|list-container/.test(signature) &&
+      nestedCommentCount <= 120
+    );
   }
 
   function scoreCommentThreadCandidate(node) {
